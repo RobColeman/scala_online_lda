@@ -107,14 +107,13 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: BigInt,
 
 
 
-/*
 
 
 
 
-self._lambda = 1 * n.random.gamma(100.0, 1.0 / 100.0, (self._K, self._W))
-self._Elogbeta = dirichlet_expectation(self._lambda)
-self._expElogbeta = n.exp(self._Elogbeta)
 
 
-*/
+
+
+
+
