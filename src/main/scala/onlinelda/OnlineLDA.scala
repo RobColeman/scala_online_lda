@@ -49,8 +49,25 @@ object OnlineLDA {
 
   def parseSession_list(sessions: List[Session]) = ???
   /*
+  def parse_sessions_list(sessions, vocab):
+      
+      D = len(sessions)
+      
+      wordids = list()
+      wordcts = list()
+      for D in range(0, D):
+          events = sessions[D]
+          ddict = dict()
+          for e in events:
+              if (e in vocab):
+                  eventtoken = vocab[e]
+                  if (not eventtoken in ddict):
+                      ddict[eventtoken] = 0
+                  ddict[eventtoken] += 1
+          wordids.append(ddict.keys())
+          wordcts.append(ddict.values())
 
-
+      return((wordids, wordcts))
    */
 }
 
