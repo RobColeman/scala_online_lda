@@ -1,11 +1,14 @@
 package onlinelda
 
+import dataModels.Session
+
 import breeze.linalg.{DenseVector, DenseMatrix, sum, Axis}
 import breeze.numerics.{digamma,exp}
 import breeze.stats.distributions.Gamma
-import models.Session
 
-
+import org.json4s._
+import org.json4s.JsonDSL._
+import org.json4s.jackson.JsonMethods._
 
 
 object OnlineLDA {
@@ -47,31 +50,10 @@ object OnlineLDA {
     psi(alpha).map{ _ - e }
   }
 
-  def parseSession_list(sessions: List[Session]) = ???
-  /*
-  def parse_sessions_list(sessions, vocab):
-      
-      D = len(sessions)
-      
-      wordids = list()
-      wordcts = list()
-      for D in range(0, D):
-          events = sessions[D]
-          ddict = dict()
-          for e in events:
-              if (e in vocab):
-                  eventtoken = vocab[e]
-                  if (not eventtoken in ddict):
-                      ddict[eventtoken] = 0
-                  ddict[eventtoken] += 1
-          wordids.append(ddict.keys())
-          wordcts.append(ddict.values())
 
-      return((wordids, wordcts))
-   */
 }
 
-class OnlineLDA(eventSet: Set[String], val K: Int, val D: BigInt,
+class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
                 alphaParam: Option[Double] = None, etaParam: Option[Double] = None,
                 tau0: Double = 1024, val kappa: Double = 0.7) {
 
@@ -85,9 +67,8 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: BigInt,
     case Some(p) => p
   }
 
-  val events: Map[String, Int] = eventSet.map {
-    e => e.toLowerCase
-  }.zipWithIndex.toMap
+  val events: Set[String] = eventSet.map(_.toLowerCase)
+  val eventIndexes: Map[String,Int] = eventSet.zipWithIndex.toMap
 
   val W: Int = events.size  // careful not to overload this Int
   val tau: Double = tau0 + 1
@@ -102,6 +83,37 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: BigInt,
   }
   var ELogBeta: DenseMatrix[Double] = OnlineLDA.dirichletExpectation(lambda)
   var expELogBeta: DenseMatrix[Double] = ELogBeta.map( x => exp(x) )
+
+  var variationalLowerBound: Double = Double.MinValue
+
+  def convertSessionECtoIndexCount(sessions: List[Session]): List[Map[Int, Int]] = {
+    sessions.map { _.eventCount.map { case (etId, count) => eventIndexes(etId) -> count } }
+  }
+
+  def updateLambda: Unit = ???
+  // calls approximateBound
+  // calls expectationStep
+
+  def approximateBound: Unit = ???
+
+
+  def expectationStep: Unit = ???
+
+  def helpOutPerplexityEstimate(sessionIdxCount: List[Map[Int, Int]]): Double = {
+    val n: Long = sessionIdxCount.length
+    val totalEvents: Long = sessionIdxCount.map{ _.values.sum }.sum
+    val perWordBound: Double = ( variationalLowerBound * n ) / (D * totalEvents.toDouble)
+    exp(-perWordBound)
+  }
+
+  def toJson = ???
+  // as a JValue
+
+  def toJsonString = ???
+  // as a JSONstring
+
+  def saveModel = ???
+  // save model to file-system
 
 }
 
