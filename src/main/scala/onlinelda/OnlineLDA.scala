@@ -3,7 +3,7 @@ package onlinelda
 import dataModels.Session
 
 import breeze.linalg.{DenseVector, DenseMatrix, sum, Axis}
-import breeze.numerics.{digamma,exp}
+import breeze.numerics.{digamma,exp,pow}
 import breeze.stats.distributions.Gamma
 
 import org.json4s._
@@ -53,9 +53,19 @@ object OnlineLDA {
 
 }
 
+/**
+ *
+ * @param eventSet the dictionary of events
+ * @param K number of clusters
+ * @param D number of total sessions we are training on, across all mini-batches, default: 1/K
+ * @param alphaParam Hyperparameter for prior on weight vectors theta, default: 1/K
+ * @param etaParam Hyperparameter for prior on topics beta
+ * @param tauParam A (positive) learning parameter that downweights early iterations
+ * @param kappa exponential decay learning rate, [0.5, 1.0]
+ */
 class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
                 alphaParam: Option[Double] = None, etaParam: Option[Double] = None,
-                tau0: Double = 1024, val kappa: Double = 0.7) {
+                tauParam: Double = 1024, val kappa: Double = 0.7) {
 
   val alpha: Double = alphaParam match {
     case None => 1.0 / K.toDouble
@@ -67,15 +77,19 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
     case Some(p) => p
   }
 
+  // the dictionary
   val events: Set[String] = eventSet.map(_.toLowerCase)
   val eventIndexes: Map[String,Int] = eventSet.zipWithIndex.toMap
 
+  // size of the dictionary
   val W: Int = events.size  // careful not to overload this Int
-  val tau: Double = tau0 + 1
-  var updateCount: BigInt = 0
+  val tau: Double = tauParam + 1
+
+  // the weight (0,1) we apply to the information from this mini-batch
+  var rhoT: Double = 0.0
+  var updateCount: Int = 0
 
   // Initialize the variational distribution
-
   var lambda: DenseMatrix[Double] = {
     val g = Gamma(100, 1.0 / 100.0)
     val a = ( 0 until K * W ).map{ i => g.draw() }.toArray
@@ -83,21 +97,34 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
   }
   var ELogBeta: DenseMatrix[Double] = OnlineLDA.dirichletExpectation(lambda)
   var expELogBeta: DenseMatrix[Double] = ELogBeta.map( x => exp(x) )
-
   var variationalLowerBound: Double = Double.MinValue
 
   def convertSessionECtoIndexCount(sessions: List[Session]): List[Map[Int, Int]] = {
     sessions.map { _.eventCount.map { case (etId, count) => eventIndexes(etId) -> count } }
   }
 
-  def updateLambda: Unit = ???
+  /**
+   *
+   * @param sessions
+   * @return Map[UniqueSessionKey,Map[cluster,gamma]]
+   *     where gamma is the parameters to the variational distribution
+   *     over the topic weights theta for the documents analyzed in this
+   *     update
+   */
+  def updateWithBatch(sessions: List[Session], verbose: Boolean = true): Map[String,Map[Int,Double]] = {
+    this.rhoT = pow( this.tau + this.updateCount, - this.kappa)
+    val (gamma, sstats): (Map[String,Map[Int,Double]], Int) = expectationStep(sessions)
+
+    ???
+  }
   // calls approximateBound
   // calls expectationStep
 
-  def approximateBound: Unit = ???
+  def updateApproximateBound: Unit = ???
 
 
-  def expectationStep: Unit = ???
+  def expectationStep(sessions: List[Session], verbose: Boolean = true): (Map[String,Map[Int,Double]], Int) = ???
+
 
   def helpOutPerplexityEstimate(sessionIdxCount: List[Map[Int, Int]]): Double = {
     val n: Long = sessionIdxCount.length
