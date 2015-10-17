@@ -106,7 +106,7 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
   /**
    *
    * @param sessions
-   * @return Map[UniqueSessionKey,Map[cluster,gamma]]
+   * @return nested map of session -> cluster -> gamma
    *     where gamma is the parameters to the variational distribution
    *     over the topic weights theta for the documents analyzed in this
    *     update
