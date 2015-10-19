@@ -65,7 +65,8 @@ object OnlineLDA {
  */
 class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
                 alphaParam: Option[Double] = None, etaParam: Option[Double] = None,
-                tauParam: Double = 1024, val kappa: Double = 0.7) {
+                tauParam: Double = 1024, val kappa: Double = 0.7,
+                val verbose: Boolean = true) {
 
   val alpha: Double = alphaParam match {
     case None => 1.0 / K.toDouble
@@ -99,7 +100,8 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
   var expELogBeta: DenseMatrix[Double] = ELogBeta.map( x => exp(x) )
   var variationalLowerBound: Double = Double.MinValue
 
-  def convertSessionECtoIndexCount(sessions: List[Session]): List[Map[Int, Int]] = {
+
+  def convertSessionECtoIndexCount(sessions: Seq[Session]): Seq[Map[Int, Int]] = {
     sessions.map { _.eventCount.map { case (etId, count) => eventIndexes(etId) -> count } }
   }
 
@@ -111,22 +113,50 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
    *     over the topic weights theta for the documents analyzed in this
    *     update
    */
-  def updateWithBatch(sessions: List[Session], verbose: Boolean = true): Map[String,Map[Int,Double]] = {
+  def updateWithBatch(sessions: Seq[Session]): (DenseMatrix[Double], Double) = {
+
+    // rhot will be between 0 and 1, and says how much to weight
+    // the information we got from this mini-batch.
     this.rhoT = pow( this.tau + this.updateCount, - this.kappa)
-    val (gamma, sstats): (Map[String,Map[Int,Double]], Int) = expectationStep(sessions)
+    // Do an E step to update gamma, phi | lambda for this
+    // mini-batch. This also returns the information about phi that
+    // we need to update lambda.
+    val (gamma, sstats): (DenseMatrix[Double], DenseMatrix[Double]) = this.expectationStep(sessions)
+    // Estimate held-out likelihood for current values of lambda.
+    this.variationalLowerBound = this.updateApproximateBound(sessions, gamma)
+    // Update lambda based on documents.
+
+    // val newLambda: DenseMatrix[Double] = this.eta + (( 1.0 / sessions.length.toDouble)  * sstats * this.D)
+    val newLambda: DenseMatrix[Double] = ???
+
+    this.lambda = (( 1 - this.rhoT ) * this.lambda ) + (this.rhoT * newLambda)
+
+    this.ELogBeta = OnlineLDA.dirichletExpectation(this.lambda)
+    this.expELogBeta = ELogBeta.map( x => exp(x) )
+    this.updateCount = this.updateCount + 1
+
+    (gamma, this.variationalLowerBound)
+  }
+
+
+
+  def updateApproximateBound(sessions: Seq[Session], gamma: DenseMatrix[Double]): Double = {
+
+
 
     ???
   }
-  // calls approximateBound
-  // calls expectationStep
-
-  def updateApproximateBound: Unit = ???
 
 
-  def expectationStep(sessions: List[Session], verbose: Boolean = true): (Map[String,Map[Int,Double]], Int) = ???
+  def expectationStep(sessions: Seq[Session]): (DenseMatrix[Double], DenseMatrix[Double]) = {
 
 
-  def helpOutPerplexityEstimate(sessionIdxCount: List[Map[Int, Int]]): Double = {
+
+    ???
+  }
+
+
+  def helpOutPerplexityEstimate(sessionIdxCount: Seq[Map[Int, Int]]): Double = {
     val n: Long = sessionIdxCount.length
     val totalEvents: Long = sessionIdxCount.map{ _.values.sum }.sum
     val perWordBound: Double = ( variationalLowerBound * n ) / (D * totalEvents.toDouble)
