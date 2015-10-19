@@ -179,7 +179,7 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
       )
     val ElogTAminuslogTg2: Double = sum(
       sum(gamma, Axis._1).map{ x => lgamma(this.alpha * this.K) - lgamma(x) }
-    )
+      )
 
     // add to score
     score += (ElogTAminuslogTg0 + ElogTAminuslogTg1 + ElogTAminuslogTg2)
