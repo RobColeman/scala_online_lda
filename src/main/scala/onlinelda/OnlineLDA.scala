@@ -6,6 +6,7 @@ import breeze.linalg.{DenseVector, DenseMatrix, sum, Axis}
 import breeze.numerics.{digamma,exp,pow}
 import breeze.stats.distributions.Gamma
 
+
 import org.json4s._
 import org.json4s.JsonDSL._
 import org.json4s.jackson.JsonMethods._
@@ -98,7 +99,6 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
   }
   var ELogBeta: DenseMatrix[Double] = OnlineLDA.dirichletExpectation(lambda)
   var expELogBeta: DenseMatrix[Double] = ELogBeta.map( x => exp(x) )
-  var variationalLowerBound: Double = Double.MinValue
 
 
   def convertSessionECtoIndexCount(sessions: Seq[Session]): Seq[Map[Int, Int]] = {
@@ -123,24 +123,24 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
     // we need to update lambda.
     val (gamma, sstats): (DenseMatrix[Double], DenseMatrix[Double]) = this.expectationStep(sessions)
     // Estimate held-out likelihood for current values of lambda.
-    this.variationalLowerBound = this.updateApproximateBound(sessions, gamma)
+    val bound = this.approximateBound(sessions, gamma)
     // Update lambda based on documents.
+    val lambdaUpdate: DenseMatrix[Double] = sstats.map{
+      x => ((x * this.D )/ sessions.length.toDouble ) + this.eta
+    }
 
-    // val newLambda: DenseMatrix[Double] = this.eta + (( 1.0 / sessions.length.toDouble)  * sstats * this.D)
-    val newLambda: DenseMatrix[Double] = ???
-
-    this.lambda = (( 1 - this.rhoT ) * this.lambda ) + (this.rhoT * newLambda)
+    this.lambda = (( 1 - this.rhoT ) * this.lambda ) + (this.rhoT * lambdaUpdate)
 
     this.ELogBeta = OnlineLDA.dirichletExpectation(this.lambda)
     this.expELogBeta = ELogBeta.map( x => exp(x) )
     this.updateCount = this.updateCount + 1
 
-    (gamma, this.variationalLowerBound)
+    (gamma, bound)
   }
 
 
 
-  def updateApproximateBound(sessions: Seq[Session], gamma: DenseMatrix[Double]): Double = {
+  def approximateBound(sessions: Seq[Session], gamma: DenseMatrix[Double]): Double = {
 
 
 
