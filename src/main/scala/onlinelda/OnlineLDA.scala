@@ -154,6 +154,7 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
     val batchElogtheta: DenseMatrix[Double] = OnlineLDA.dirichletExpectation(gamma)
     val batchExpElogtheta: DenseMatrix[Double] = exp(batchElogtheta)
 
+    // block0
     // E[log p(sessions | theta, id)]
     val sessionsScoreContribution = etCountByToken.zipWithIndex.map{ case (etCount, sessionIdx) =>
 
@@ -169,7 +170,9 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
 
     // add to score
     score += sessionsScoreContribution
+    // end block0
 
+    // block1
     // E[log p(theta | alpha) - log q(theta | gamma)]
     val ElogTAminuslogTg0: Double = sum(
       gamma.pairs.map{ case (idxPair,v) => batchElogtheta(idxPair) * (this.alpha - v) }
@@ -183,18 +186,25 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
 
     // add to score
     score += (ElogTAminuslogTg0 + ElogTAminuslogTg1 + ElogTAminuslogTg2)
+    // end block1
+
 
     // normalize by batch size fraction
     score = score * (this.D / batchD.toDouble)
 
-
-    /*
-        # E[log p(beta | eta) - log q (beta | lambda)]
-        score = score + n.sum((self._eta-self._lambda)*self._Elogbeta)
-        score = score + n.sum(gammaln(self._lambda) - gammaln(self._eta))
-        score = score + n.sum(gammaln(self._eta*self._W) -
-                              gammaln(n.sum(self._lambda, 1)))
-     */
+    // block2
+    val ElogPBetaEtaminusLogqBetaLambda0: Double = sum(
+      this.ELogBeta.pairs.map { case (idxPair, v) => v * (this.eta - this.lambda(idxPair)) }
+    )
+    val ElogPBetaEtaminusLogqBetaLambda1: Double = sum(
+      this.lambda.map{ x => lgamma(x) - lgamma(this.eta) }
+    )
+    val ElogPBetaEtaminusLogqBetaLambda2: Double = sum(
+      sum(this.lambda, Axis._1).map{ x => lgamma(this.eta * this.W) - lgamma(x) }
+    )
+    // add to score
+    score += (ElogPBetaEtaminusLogqBetaLambda0 + ElogPBetaEtaminusLogqBetaLambda1 + ElogPBetaEtaminusLogqBetaLambda2)
+    // end block2
 
     score
   }
@@ -215,10 +225,10 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
     exp(-perWordBound)
   }
 
-  def toJson = ???
+  def toJson: JValue = ???
   // as a JValue
 
-  def toJsonString = ???
+  def toJsonString: String = compact(this.toJson)
   // as a JSONstring
 
   def saveModel = ???
