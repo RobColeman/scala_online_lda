@@ -2,9 +2,10 @@ package onlinelda
 
 import dataModels.Session
 
-import breeze.linalg.{DenseVector, DenseMatrix, sum, Axis}
-import breeze.numerics.{digamma,exp,pow}
+import breeze.linalg._
+import breeze.numerics.{log, digamma, exp, pow, lgamma}
 import breeze.stats.distributions.Gamma
+import scala.collection.mutable
 
 
 import org.json4s._
@@ -13,6 +14,8 @@ import org.json4s.jackson.JsonMethods._
 
 
 object OnlineLDA {
+
+  val meanchangethresh: Double = 0.001
 
   def psi(x: DenseMatrix[Double]): DenseMatrix[Double] = {
     x.map{ i => digamma(i)}
@@ -65,9 +68,11 @@ object OnlineLDA {
  * @param kappa exponential decay learning rate, [0.5, 1.0]
  */
 class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
-                alphaParam: Option[Double] = None, etaParam: Option[Double] = None,
-                tauParam: Double = 1024, val kappa: Double = 0.7,
-                val verbose: Boolean = true) {
+                alphaParam: Option[Double] = None,
+                etaParam: Option[Double] = None,
+                tauParam: Double = 1024,
+                val kappa: Double = 0.7,
+                val verbose: Boolean = true) extends Serializable {
 
   val alpha: Double = alphaParam match {
     case None => 1.0 / K.toDouble
@@ -98,7 +103,7 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
     new DenseMatrix(K, W.toInt, a)
   }
   var ELogBeta: DenseMatrix[Double] = OnlineLDA.dirichletExpectation(lambda)
-  var expELogBeta: DenseMatrix[Double] = ELogBeta.map( x => exp(x) )
+  var expELogBeta: DenseMatrix[Double] = exp(ELogBeta)
 
 
   def convertSessionECtoIndexCount(sessions: Seq[Session]): Seq[Map[Int, Int]] = {
@@ -132,7 +137,7 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
     this.lambda = (( 1 - this.rhoT ) * this.lambda ) + (this.rhoT * lambdaUpdate)
 
     this.ELogBeta = OnlineLDA.dirichletExpectation(this.lambda)
-    this.expELogBeta = ELogBeta.map( x => exp(x) )
+    this.expELogBeta = exp(ELogBeta)
     this.updateCount = this.updateCount + 1
 
     (gamma, bound)
@@ -141,10 +146,57 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
 
 
   def approximateBound(sessions: Seq[Session], gamma: DenseMatrix[Double]): Double = {
+    val etCountByToken: Seq[Map[Int, Int]] = convertSessionECtoIndexCount(sessions)
+    val batchD: Int = etCountByToken.length
+
+    var score = 0.0
+    // may be computing this multiple times
+    val batchElogtheta: DenseMatrix[Double] = OnlineLDA.dirichletExpectation(gamma)
+    val batchExpElogtheta: DenseMatrix[Double] = exp(batchElogtheta)
+
+    // E[log p(sessions | theta, id)]
+    val sessionsScoreContribution = etCountByToken.zipWithIndex.map{ case (etCount, sessionIdx) =>
+
+      val scoreAugForSession: Double = etCount.map{ case (etIdx, count) =>
+        val temp: DenseVector[Double] = batchElogtheta(sessionIdx, ::).t + this.ELogBeta(::, etIdx)
+        val tmax: Double = max(temp)
+        val phiNorm: Double = log( sum( temp.map{ x => exp( x - tmax )} ) ) + tmax
+        count * phiNorm
+      }.sum
+
+      scoreAugForSession
+    }.sum
+
+    // add to score
+    score += sessionsScoreContribution
+
+    // E[log p(theta | alpha) - log q(theta | gamma)]
+    val ElogTAminuslogTg0: Double = sum(
+      gamma.pairs.map{ case (idxPair,v) => batchElogtheta(idxPair) * (this.alpha - v) }
+      )
+    val ElogTAminuslogTg1: Double = sum(
+      gamma.map{ x => lgamma(x) - lgamma(this.alpha) }
+      )
+    val ElogTAminuslogTg2: Double = sum(
+      sum(gamma, Axis._1).map{ x => lgamma(this.alpha * this.K) - lgamma(x) }
+    )
+
+    // add to score
+    score += (ElogTAminuslogTg0 + ElogTAminuslogTg1 + ElogTAminuslogTg2)
+
+    // normalize by batch size fraction
+    score = score * (this.D / batchD.toDouble)
 
 
+    /*
+        # E[log p(beta | eta) - log q (beta | lambda)]
+        score = score + n.sum((self._eta-self._lambda)*self._Elogbeta)
+        score = score + n.sum(gammaln(self._lambda) - gammaln(self._eta))
+        score = score + n.sum(gammaln(self._eta*self._W) -
+                              gammaln(n.sum(self._lambda, 1)))
+     */
 
-    ???
+    score
   }
 
 
@@ -156,7 +208,7 @@ class OnlineLDA(eventSet: Set[String], val K: Int, val D: Long,
   }
 
 
-  def helpOutPerplexityEstimate(sessionIdxCount: Seq[Map[Int, Int]]): Double = {
+  def helpOutPerplexityEstimate(sessionIdxCount: Seq[Map[Int, Int]], variationalLowerBound: Double): Double = {
     val n: Long = sessionIdxCount.length
     val totalEvents: Long = sessionIdxCount.map{ _.values.sum }.sum
     val perWordBound: Double = ( variationalLowerBound * n ) / (D * totalEvents.toDouble)
