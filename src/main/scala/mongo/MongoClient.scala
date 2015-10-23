@@ -2,7 +2,10 @@ package mongo
 
 import com.mongodb.ServerAddress
 import com.mongodb.casbah.Imports._
+import org.apache.spark.SparkContext
+import org.apache.spark.rdd.RDD
 import org.bson.types.ObjectId
+import dataModels.Session
 
 /**
  * Created by rcoleman on 10/15/15.
@@ -29,6 +32,7 @@ object MongoClient {
 
   def byProject(projectId: String): MongoDBObject = MongoDBObject("project_id" -> new ObjectId(projectId))
   def byInstance(instanceId: String): MongoDBObject = MongoDBObject("instance_id" -> new ObjectId(instanceId))
+  def byInstanceString(instanceId: String): MongoDBObject = MongoDBObject("instance_id" -> instanceId)
   def byEntityId(entityId: String): MongoDBObject = MongoDBObject("entity_id" -> new ObjectId(entityId))
   def byInstance(instanceId: String, entityId: String): MongoDBObject = MongoDBObject("instance_id" -> new ObjectId(instanceId))
   def byInstanceAndEntityId(instanceId: String, entityId: String): MongoDBObject = MongoDBObject(
@@ -40,8 +44,16 @@ object MongoClient {
     eventTypesCollection.find(byProject(projectId))
   }
 
-  def getAllSessions(instanceId: String): MongoCursor = {
-    sessionsCollection.find(byInstance(instanceId))
+  def getAllEventTypesIds(projectId: String): Set[String] = {
+    eventTypesCollection.find(byProject(projectId)).map{ _.get("_id").toString}.toSet
+  }
+
+  def getAllSessions(instanceId: String): Iterator[Session] = {
+    sessionsCollection.find(byInstanceString(instanceId)).map(Session(_))
+  }
+
+  def getAllSessionsRDD(sc: SparkContext, instanceId: String): RDD[Session] = {
+    sc.parallelize(sessionsCollection.find(byInstanceString(instanceId)).map(Session(_)).toSeq)
   }
 
   def getSessionBatch(instanceId: String)(offsetLimitPair: (Int, Int)): MongoCursor = {
